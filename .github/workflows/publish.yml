@@ -95,32 +95,139 @@ jobs:
         id: changelog
         run: |
           if [ -f CHANGELOG.md ]; then
+            # 如果存在 CHANGELOG.md，从中提取对应版本的变更记录
             CHANGELOG=$(sed -n "/## \[${{ env.NEW_VERSION }}\]/,/## \[/p" CHANGELOG.md | head -n -1)
+            if [ -z "$CHANGELOG" ]; then
+              # 如果在 CHANGELOG.md 中没找到对应版本，使用 git 历史生成
+              CHANGELOG="$(cat << 'EOF'
+          🎉 Version ${{ env.NEW_VERSION }} Release
+          
+          ### 🔄 Changes in this release
+          EOF
+          )"
+              # 获取上一个标签
+              PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+              if [ -n "$PREVIOUS_TAG" ]; then
+                echo "### 📝 Commits since $PREVIOUS_TAG:" >> temp_changelog
+                git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%an)" --no-merges >> temp_changelog
+              else
+                echo "### 📝 Recent commits:" >> temp_changelog
+                git log --pretty=format:"- %s (%an)" --no-merges -n 10 >> temp_changelog
+              fi
+              CHANGELOG="$CHANGELOG"$'\n'"$(cat temp_changelog)"
+              rm -f temp_changelog
+            fi
           else
-            CHANGELOG="🎉 Version ${{ env.NEW_VERSION }} Release
+            # 如果没有 CHANGELOG.md，基于 git 历史自动生成
+            CHANGELOG="$(cat << 'EOF'
+          🎉 Version ${{ env.NEW_VERSION }} Release
+          
+          ### 🚀 What's New
+          EOF
+          )"
+            
+            # 获取上一个标签
+            PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+            
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo "" >> temp_changelog
+              echo "### 📝 Changes since $PREVIOUS_TAG:" >> temp_changelog
+              echo "" >> temp_changelog
+              
+              # 分类显示提交
+              git log ${PREVIOUS_TAG}..HEAD --pretty=format:"%s" --no-merges | while read -r commit; do
+                case "$commit" in
+                  feat:*|feature:*)
+                    echo "- ✨ ${commit#*: }" >> features.tmp
+                    ;;
+                  fix:*|bugfix:*)
+                    echo "- 🐛 ${commit#*: }" >> fixes.tmp
+                    ;;
+                  docs:*)
+                    echo "- 📚 ${commit#*: }" >> docs.tmp
+                    ;;
+                  chore:*|ci:*)
+                    echo "- 🔧 ${commit#*: }" >> chores.tmp
+                    ;;
+                  *)
+                    echo "- 📦 $commit" >> others.tmp
+                    ;;
+                esac
+              done
+              
+              # 组合各类提交
+              if [ -f features.tmp ]; then
+                echo "#### ✨ Features" >> temp_changelog
+                cat features.tmp >> temp_changelog
+                echo "" >> temp_changelog
+                rm features.tmp
+              fi
+              
+              if [ -f fixes.tmp ]; then
+                echo "#### 🐛 Bug Fixes" >> temp_changelog
+                cat fixes.tmp >> temp_changelog
+                echo "" >> temp_changelog
+                rm fixes.tmp
+              fi
+              
+              if [ -f docs.tmp ]; then
+                echo "#### 📚 Documentation" >> temp_changelog
+                cat docs.tmp >> temp_changelog
+                echo "" >> temp_changelog
+                rm docs.tmp
+              fi
+              
+              if [ -f others.tmp ]; then
+                echo "#### 📦 Other Changes" >> temp_changelog
+                cat others.tmp >> temp_changelog
+                echo "" >> temp_changelog
+                rm others.tmp
+              fi
+              
+              if [ -f chores.tmp ]; then
+                echo "#### 🔧 Maintenance" >> temp_changelog
+                cat chores.tmp >> temp_changelog
+                rm chores.tmp
+              fi
+            else
+              # 如果是第一个版本，显示项目介绍
+              cat << 'EOF' >> temp_changelog
 
-            ### Key Features
-            - ✅ Complete bcryptjs async functions support
-            - ✅ 6 operations covering all bcryptjs functionality
-            - ✅ Password hashing, comparison, salt generation and validation
-            - ✅ Full TypeScript support with type definitions
-            - ✅ English interface for international users
+          ### 🎯 Project Overview
+          This is an n8n community node package that provides bcryptjs password hashing and verification functionality.
 
-            ### Operations
-            - **Compare Password**: Asynchronously compare password with hash
-            - **Generate Salt**: Asynchronously generate salt value
-            - **Get Rounds**: Get the number of rounds used in the hash
-            - **Get Salt**: Extract salt portion from hash
-            - **Hash Password**: Asynchronously hash password
-            - **Test Truncation**: Test if password will be truncated
+          #### ✨ Key Features
+          - ✅ Complete bcryptjs async functions support
+          - ✅ 6 operations covering all bcryptjs functionality  
+          - ✅ Password hashing, comparison, salt generation and validation
+          - ✅ Full TypeScript support with type definitions
+          - ✅ English interface for international users
 
-            ### Installation
-            \`\`\`bash
-            npm install @luka-cat-mimi/n8n-nodes-bcryptjs
-            \`\`\`
+          #### 🛠️ Available Operations
+          - **Compare Password**: Asynchronously compare password with hash
+          - **Generate Salt**: Asynchronously generate salt value
+          - **Get Rounds**: Get the number of rounds used in the hash
+          - **Get Salt**: Extract salt portion from hash
+          - **Hash Password**: Asynchronously hash password
+          - **Test Truncation**: Test if password will be truncated
+          EOF
+            fi
+            
+            # 添加安装说明
+            cat << 'EOF' >> temp_changelog
 
-            For detailed usage instructions, see [README.md](https://github.com/luka-mimi/n8n-nodes-bcryptjs#readme)"
+          ### 📦 Installation
+          ```bash
+          npm install @luka-cat-mimi/n8n-nodes-bcryptjs
+          ```
+
+          For detailed usage instructions, see [README.md](https://github.com/luka-mimi/n8n-nodes-bcryptjs#readme)
+          EOF
+            
+            CHANGELOG="$CHANGELOG"$'\n'"$(cat temp_changelog)"
+            rm -f temp_changelog
           fi
+          
           echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
