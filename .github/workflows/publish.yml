@@ -93,112 +93,66 @@ jobs:
       - name: 生成变更日志
         id: changelog
         run: |
+          # 设置默认变更日志
+          DEFAULT_CHANGELOG="🎉 版本 ${{ env.NEW_VERSION }} 发布
+
+          ### 📝 本次更新"
+          
           if [ -f CHANGELOG.md ]; then
             # 如果存在CHANGELOG.md，尝试提取当前版本的变更内容
-            CHANGELOG=$(sed -n "/## \[${{ env.NEW_VERSION }}\]/,/## \[/p" CHANGELOG.md | head -n -1)
-            if [ -z "$CHANGELOG" ]; then
-              # 如果没找到对应版本的变更日志，生成基于git提交的变更日志
-              CHANGELOG=$(cat << 'EOL'
-          🎉 版本 ${{ env.NEW_VERSION }} 发布
-
-          ### 📝 本次更新
-          EOL
-              )
-
-              # 获取上一个标签
+            EXTRACTED_CHANGELOG=$(sed -n "/## \[${{ env.NEW_VERSION }}\]/,/## \[/p" CHANGELOG.md | head -n -1)
+            if [ -n "$EXTRACTED_CHANGELOG" ]; then
+              CHANGELOG="$EXTRACTED_CHANGELOG"
+            else
+              # 没找到对应版本，使用git历史生成
+              CHANGELOG="$DEFAULT_CHANGELOG"
               LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-
               if [ -n "$LAST_TAG" ]; then
-                echo "从标签 $LAST_TAG 到当前版本的变更:" >> temp_changelog.txt
-                echo "" >> temp_changelog.txt
-
-                # 获取提交历史并分类
-                git log $LAST_TAG..HEAD --pretty=format:"%s" --no-merges | while read -r commit_msg; do
-                  case "$commit_msg" in
-                    feat*|feature*) echo "- ✨ $commit_msg" >> temp_changelog.txt ;;
-                    fix*|bugfix*) echo "- 🐛 $commit_msg" >> temp_changelog.txt ;;
-                    docs*) echo "- 📚 $commit_msg" >> temp_changelog.txt ;;
-                    style*) echo "- 💄 $commit_msg" >> temp_changelog.txt ;;
-                    refactor*) echo "- ♻️ $commit_msg" >> temp_changelog.txt ;;
-                    test*) echo "- ✅ $commit_msg" >> temp_changelog.txt ;;
-                    chore*) echo "- 🔧 $commit_msg" >> temp_changelog.txt ;;
-                    *) echo "- 📦 $commit_msg" >> temp_changelog.txt ;;
-                  esac
-                done
-
-                if [ -s temp_changelog.txt ]; then
+                git log $LAST_TAG..HEAD --pretty=format:"- 📦 %s" --no-merges >> temp_changes.txt
+                if [ -s temp_changes.txt ]; then
                   CHANGELOG="$CHANGELOG
-          $(cat temp_changelog.txt)"
-                  rm -f temp_changelog.txt
+          $(cat temp_changes.txt)"
+                  rm -f temp_changes.txt
                 fi
               else
-                # 如果是首次发布，显示首次发布信息
                 CHANGELOG="$CHANGELOG
-          - 🎉 首次发布n8n-nodes-bcryptjs
+          - 🎉 首次发布n8n-nodes-bcryptjs"
               fi
-              CHANGELOG="$CHANGELOG
-
-          ### 📦 安装方式
-          \`\`\`bash
-          npm install @luka-cat-mimi/n8n-nodes-bcryptjs
-          \`\`\`
-
-          ### 🔗 相关链接
-          - [📖 使用文档](https://github.com/luka-mimi/n8n-nodes-bcryptjs#readme)
-          - [📦 NPM包](https://www.npmjs.com/package/@luka-cat-mimi/n8n-nodes-bcryptjs)
-          - [🐛 问题反馈](https://github.com/luka-mimi/n8n-nodes-bcryptjs/issues)"
             fi
           else
             # 如果不存在CHANGELOG.md，生成基于git提交的变更日志
-            CHANGELOG="🎉 版本 ${{ env.NEW_VERSION }} 发布
-
-          ### 📝 本次更新"
-
-            # 获取上一个标签
+            CHANGELOG="$DEFAULT_CHANGELOG"
             LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-
+            
             if [ -n "$LAST_TAG" ]; then
-              echo "检测到上一个版本: $LAST_TAG"
-
-              # 获取提交历史并分类
-              HAS_CHANGES=false
-              while read -r commit_msg; do
-                if [ -n "$commit_msg" ]; then
-                  HAS_CHANGES=true
+              # 获取提交历史
+              git log $LAST_TAG..HEAD --pretty=format:"%s" --no-merges > temp_commits.txt
+              if [ -s temp_commits.txt ]; then
+                while IFS= read -r commit_msg; do
                   case "$commit_msg" in
-                    feat*|feature*) CHANGELOG="$CHANGELOG
-          - ✨ $commit_msg" ;;
-                    fix*|bugfix*) CHANGELOG="$CHANGELOG
-          - 🐛 $commit_msg" ;;
-                    docs*) CHANGELOG="$CHANGELOG
-          - 📚 $commit_msg" ;;
-                    style*) CHANGELOG="$CHANGELOG
-          - 💄 $commit_msg" ;;
-                    refactor*) CHANGELOG="$CHANGELOG
-          - ♻️ $commit_msg" ;;
-                    test*) CHANGELOG="$CHANGELOG
-          - ✅ $commit_msg" ;;
-                    chore*) CHANGELOG="$CHANGELOG
-          - 🔧 $commit_msg" ;;
-                    *) CHANGELOG="$CHANGELOG
-          - 📦 $commit_msg" ;;
+                    feat*|feature*) echo "- ✨ $commit_msg" ;;
+                    fix*|bugfix*) echo "- 🐛 $commit_msg" ;;
+                    docs*) echo "- 📚 $commit_msg" ;;
+                    chore*|ci*) echo "- 🔧 $commit_msg" ;;
+                    *) echo "- 📦 $commit_msg" ;;
                   esac
-                fi
-              done << EOF
-          $(git log $LAST_TAG..HEAD --pretty=format:"%s" --no-merges)
-          EOF
-
-              if [ "$HAS_CHANGES" = false ]; then
+                done < temp_commits.txt > temp_changes.txt
+                
+                CHANGELOG="$CHANGELOG
+          $(cat temp_changes.txt)"
+                rm -f temp_commits.txt temp_changes.txt
+              else
                 CHANGELOG="$CHANGELOG
           - 🔧 版本维护更新"
               fi
             else
-              # 首次发布
               CHANGELOG="$CHANGELOG
-          - 🎉 首次发布n8n-nodes-bcryptjs
+          - 🎉 首次发布n8n-nodes-bcryptjs"
             fi
-
-            CHANGELOG="$CHANGELOG
+          fi
+          
+          # 添加安装说明
+          CHANGELOG="$CHANGELOG
 
           ### 📦 安装方式
           \`\`\`bash
@@ -209,7 +163,6 @@ jobs:
           - [📖 使用文档](https://github.com/luka-mimi/n8n-nodes-bcryptjs#readme)
           - [📦 NPM包](https://www.npmjs.com/package/@luka-cat-mimi/n8n-nodes-bcryptjs)
           - [🐛 问题反馈](https://github.com/luka-mimi/n8n-nodes-bcryptjs/issues)"
-          fi
 
           echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
