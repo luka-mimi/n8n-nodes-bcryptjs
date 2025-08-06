@@ -1,4 +1,4 @@
-name: Auto Publish to NPM and GitHub Release
+name: 自动发布到NPM和GitHub Release
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version_type:
-        description: 'Version Type'
+        description: '版本类型'
         required: true
         default: 'patch'
         type: choice
@@ -15,7 +15,6 @@ on:
           - patch
           - minor
           - major
-
 permissions:
   id-token: write  # Required for OIDC
   contents: read
@@ -23,20 +22,20 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: 正式环境
+    environment: 正式环境  # ⬅️ 加上这一行！
     permissions:
       contents: write
       packages: write
       id-token: write
 
     steps:
-      - name: Checkout code
+      - name: 检出代码
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js
+      - name: 设置Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -44,24 +43,24 @@ jobs:
           cache: 'npm'
           always-auth: true
 
-      - name: Update npm
+      - name: 更新npm版本
         run: npm install -g npm@latest
 
-      - name: Install dependencies
+      - name: 安装依赖
         run: npm ci
 
-      - name: Run code quality checks
+      - name: 运行代码检查
         run: npm run lint
 
-      - name: Build project
+      - name: 构建项目
         run: npm run build --if-present
 
-      - name: Configure Git user
+      - name: 配置Git用户
         run: |
           git config --local user.email "luka.cat.mimi@gmail.com"
           git config --local user.name "luka"
 
-      - name: Update version (manual trigger)
+      - name: 更新版本号（手动触发）
         if: github.event_name == 'workflow_dispatch'
         run: |
           NEW_VERSION=$(npm version ${{ github.event.inputs.version_type }} --no-git-tag-version)
@@ -71,12 +70,12 @@ jobs:
           git tag $NEW_VERSION
           git push origin HEAD --follow-tags
 
-      - name: Get version (tag trigger)
+      - name: 获取版本号（标签触发）
         if: github.event_name == 'push'
         run: |
           echo "NEW_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
-      - name: Validate build artifacts
+      - name: 验证构建产物
         run: |
           echo "Checking dist directory contents:"
           ls -la dist/
@@ -85,154 +84,138 @@ jobs:
           test -f dist/nodes/Bcryptjs/bcryptjs.svg && echo "✅ bcryptjs.svg exists"
           test -f dist/package.json && echo "✅ dist/package.json exists"
 
-      - name: Publish to NPM
+      - name: 发布到NPM
         run: |
           npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Generate changelog
+      - name: 生成变更日志
         id: changelog
         run: |
           if [ -f CHANGELOG.md ]; then
-            # 如果存在 CHANGELOG.md，从中提取对应版本的变更记录
+            # 如果存在CHANGELOG.md，尝试提取当前版本的变更内容
             CHANGELOG=$(sed -n "/## \[${{ env.NEW_VERSION }}\]/,/## \[/p" CHANGELOG.md | head -n -1)
             if [ -z "$CHANGELOG" ]; then
-              # 如果在 CHANGELOG.md 中没找到对应版本，使用 git 历史生成
-              CHANGELOG="$(cat << 'EOF'
-          🎉 Version ${{ env.NEW_VERSION }} Release
-          
-          ### 🔄 Changes in this release
-          EOF
-          )"
+              # 如果没找到对应版本的变更日志，生成基于git提交的变更日志
+              CHANGELOG=$(cat << 'EOL'
+          🎉 版本 ${{ env.NEW_VERSION }} 发布
+
+          ### 📝 本次更新
+          EOL
+              )
+
               # 获取上一个标签
-              PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-              if [ -n "$PREVIOUS_TAG" ]; then
-                echo "### 📝 Commits since $PREVIOUS_TAG:" >> temp_changelog
-                git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%an)" --no-merges >> temp_changelog
+              LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+              if [ -n "$LAST_TAG" ]; then
+                echo "从标签 $LAST_TAG 到当前版本的变更:" >> temp_changelog.txt
+                echo "" >> temp_changelog.txt
+
+                # 获取提交历史并分类
+                git log $LAST_TAG..HEAD --pretty=format:"%s" --no-merges | while read -r commit_msg; do
+                  case "$commit_msg" in
+                    feat*|feature*) echo "- ✨ $commit_msg" >> temp_changelog.txt ;;
+                    fix*|bugfix*) echo "- 🐛 $commit_msg" >> temp_changelog.txt ;;
+                    docs*) echo "- 📚 $commit_msg" >> temp_changelog.txt ;;
+                    style*) echo "- 💄 $commit_msg" >> temp_changelog.txt ;;
+                    refactor*) echo "- ♻️ $commit_msg" >> temp_changelog.txt ;;
+                    test*) echo "- ✅ $commit_msg" >> temp_changelog.txt ;;
+                    chore*) echo "- 🔧 $commit_msg" >> temp_changelog.txt ;;
+                    *) echo "- 📦 $commit_msg" >> temp_changelog.txt ;;
+                  esac
+                done
+
+                if [ -s temp_changelog.txt ]; then
+                  CHANGELOG="$CHANGELOG
+          $(cat temp_changelog.txt)"
+                  rm -f temp_changelog.txt
+                fi
               else
-                echo "### 📝 Recent commits:" >> temp_changelog
-                git log --pretty=format:"- %s (%an)" --no-merges -n 10 >> temp_changelog
+                # 如果是首次发布，显示首次发布信息
+                CHANGELOG="$CHANGELOG
+          - 🎉 首次发布n8n-nodes-bcryptjs
               fi
-              CHANGELOG="$CHANGELOG"$'\n'"$(cat temp_changelog)"
-              rm -f temp_changelog
+              CHANGELOG="$CHANGELOG
+
+          ### 📦 安装方式
+          \`\`\`bash
+          npm install @luka-cat-mimi/n8n-nodes-bcryptjs
+          \`\`\`
+
+          ### 🔗 相关链接
+          - [📖 使用文档](https://github.com/luka-mimi/n8n-nodes-bcryptjs#readme)
+          - [📦 NPM包](https://www.npmjs.com/package/@luka-cat-mimi/n8n-nodes-bcryptjs)
+          - [🐛 问题反馈](https://github.com/luka-mimi/n8n-nodes-bcryptjs/issues)"
             fi
           else
-            # 如果没有 CHANGELOG.md，基于 git 历史自动生成
-            CHANGELOG="$(cat << 'EOF'
-          🎉 Version ${{ env.NEW_VERSION }} Release
-          
-          ### 🚀 What's New
-          EOF
-          )"
-            
+            # 如果不存在CHANGELOG.md，生成基于git提交的变更日志
+            CHANGELOG="🎉 版本 ${{ env.NEW_VERSION }} 发布
+
+          ### 📝 本次更新"
+
             # 获取上一个标签
-            PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-            
-            if [ -n "$PREVIOUS_TAG" ]; then
-              echo "" >> temp_changelog
-              echo "### 📝 Changes since $PREVIOUS_TAG:" >> temp_changelog
-              echo "" >> temp_changelog
-              
-              # 分类显示提交
-              git log ${PREVIOUS_TAG}..HEAD --pretty=format:"%s" --no-merges | while read -r commit; do
-                case "$commit" in
-                  feat:*|feature:*)
-                    echo "- ✨ ${commit#*: }" >> features.tmp
-                    ;;
-                  fix:*|bugfix:*)
-                    echo "- 🐛 ${commit#*: }" >> fixes.tmp
-                    ;;
-                  docs:*)
-                    echo "- 📚 ${commit#*: }" >> docs.tmp
-                    ;;
-                  chore:*|ci:*)
-                    echo "- 🔧 ${commit#*: }" >> chores.tmp
-                    ;;
-                  *)
-                    echo "- 📦 $commit" >> others.tmp
-                    ;;
-                esac
-              done
-              
-              # 组合各类提交
-              if [ -f features.tmp ]; then
-                echo "#### ✨ Features" >> temp_changelog
-                cat features.tmp >> temp_changelog
-                echo "" >> temp_changelog
-                rm features.tmp
-              fi
-              
-              if [ -f fixes.tmp ]; then
-                echo "#### 🐛 Bug Fixes" >> temp_changelog
-                cat fixes.tmp >> temp_changelog
-                echo "" >> temp_changelog
-                rm fixes.tmp
-              fi
-              
-              if [ -f docs.tmp ]; then
-                echo "#### 📚 Documentation" >> temp_changelog
-                cat docs.tmp >> temp_changelog
-                echo "" >> temp_changelog
-                rm docs.tmp
-              fi
-              
-              if [ -f others.tmp ]; then
-                echo "#### 📦 Other Changes" >> temp_changelog
-                cat others.tmp >> temp_changelog
-                echo "" >> temp_changelog
-                rm others.tmp
-              fi
-              
-              if [ -f chores.tmp ]; then
-                echo "#### 🔧 Maintenance" >> temp_changelog
-                cat chores.tmp >> temp_changelog
-                rm chores.tmp
+            LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+            if [ -n "$LAST_TAG" ]; then
+              echo "检测到上一个版本: $LAST_TAG"
+
+              # 获取提交历史并分类
+              HAS_CHANGES=false
+              while read -r commit_msg; do
+                if [ -n "$commit_msg" ]; then
+                  HAS_CHANGES=true
+                  case "$commit_msg" in
+                    feat*|feature*) CHANGELOG="$CHANGELOG
+          - ✨ $commit_msg" ;;
+                    fix*|bugfix*) CHANGELOG="$CHANGELOG
+          - 🐛 $commit_msg" ;;
+                    docs*) CHANGELOG="$CHANGELOG
+          - 📚 $commit_msg" ;;
+                    style*) CHANGELOG="$CHANGELOG
+          - 💄 $commit_msg" ;;
+                    refactor*) CHANGELOG="$CHANGELOG
+          - ♻️ $commit_msg" ;;
+                    test*) CHANGELOG="$CHANGELOG
+          - ✅ $commit_msg" ;;
+                    chore*) CHANGELOG="$CHANGELOG
+          - 🔧 $commit_msg" ;;
+                    *) CHANGELOG="$CHANGELOG
+          - 📦 $commit_msg" ;;
+                  esac
+                fi
+              done << EOF
+          $(git log $LAST_TAG..HEAD --pretty=format:"%s" --no-merges)
+          EOF
+
+              if [ "$HAS_CHANGES" = false ]; then
+                CHANGELOG="$CHANGELOG
+          - 🔧 版本维护更新"
               fi
             else
-              # 如果是第一个版本，显示项目介绍
-              cat << 'EOF' >> temp_changelog
-
-          ### 🎯 Project Overview
-          This is an n8n community node package that provides bcryptjs password hashing and verification functionality.
-
-          #### ✨ Key Features
-          - ✅ Complete bcryptjs async functions support
-          - ✅ 6 operations covering all bcryptjs functionality  
-          - ✅ Password hashing, comparison, salt generation and validation
-          - ✅ Full TypeScript support with type definitions
-          - ✅ English interface for international users
-
-          #### 🛠️ Available Operations
-          - **Compare Password**: Asynchronously compare password with hash
-          - **Generate Salt**: Asynchronously generate salt value
-          - **Get Rounds**: Get the number of rounds used in the hash
-          - **Get Salt**: Extract salt portion from hash
-          - **Hash Password**: Asynchronously hash password
-          - **Test Truncation**: Test if password will be truncated
-          EOF
+              # 首次发布
+              CHANGELOG="$CHANGELOG
+          - 🎉 首次发布n8n-nodes-bcryptjs
             fi
-            
-            # 添加安装说明
-            cat << 'EOF' >> temp_changelog
 
-          ### 📦 Installation
-          ```bash
+            CHANGELOG="$CHANGELOG
+
+          ### 📦 安装方式
+          \`\`\`bash
           npm install @luka-cat-mimi/n8n-nodes-bcryptjs
-          ```
+          \`\`\`
 
-          For detailed usage instructions, see [README.md](https://github.com/luka-mimi/n8n-nodes-bcryptjs#readme)
-          EOF
-            
-            CHANGELOG="$CHANGELOG"$'\n'"$(cat temp_changelog)"
-            rm -f temp_changelog
+          ### 🔗 相关链接
+          - [📖 使用文档](https://github.com/luka-mimi/n8n-nodes-bcryptjs#readme)
+          - [📦 NPM包](https://www.npmjs.com/package/@luka-cat-mimi/n8n-nodes-bcryptjs)
+          - [🐛 问题反馈](https://github.com/luka-mimi/n8n-nodes-bcryptjs/issues)"
           fi
-          
+
           echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Create GitHub Release
+      - name: 创建GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.NEW_VERSION }}
@@ -244,9 +227,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publication success notification
+      - name: 发布成功通知
         run: |
-          echo "🎉 Publication successful!"
-          echo "📦 NPM Package: https://www.npmjs.com/package/@luka-cat-mimi/n8n-nodes-bcryptjs"
+          echo "🎉 发布成功！"
+          echo "📦 NPM包: https://www.npmjs.com/package/@luka-cat-mimi/n8n-nodes-bcryptjs"
           echo "🚀 GitHub Release: https://github.com/luka-mimi/n8n-nodes-bcryptjs/releases/tag/${{ env.NEW_VERSION }}"
-          echo "📋 Install Command: npm install @luka-cat-mimi/n8n-nodes-bcryptjs"
+          echo "📋 安装命令: npm install @luka-cat-mimi/n8n-nodes-bcryptjs"
