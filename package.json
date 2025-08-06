@@ -1,6 +1,6 @@
 {
   "name": "@luka-cat-mimi/n8n-nodes-bcryptjs",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "n8n community node package that provides bcryptjs password hashing and verification functionality with full async operations support",
   "keywords": [
     "n8n-community-node-package",
