@@ -1,0 +1,138 @@
+name: Auto Publish to NPM and GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version Type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: 正式环境
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+          always-auth: true
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run code quality checks
+        run: npm run lint
+
+      - name: Build project
+        run: npm run build
+
+      - name: Configure Git user
+        run: |
+          git config --local user.email "luka.cat.mimi@gmail.com"
+          git config --local user.name "luka"
+
+      - name: Update version (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          NEW_VERSION=$(npm version ${{ github.event.inputs.version_type }} --no-git-tag-version)
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          git add package.json package-lock.json
+          git commit -m "chore: bump version to $NEW_VERSION"
+          git tag $NEW_VERSION
+          git push origin HEAD --follow-tags
+
+      - name: Get version (tag trigger)
+        if: github.event_name == 'push'
+        run: |
+          echo "NEW_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Validate build artifacts
+        run: |
+          echo "Checking dist directory contents:"
+          ls -la dist/
+          echo "Checking if main files exist:"
+          test -f dist/nodes/Bcryptjs/Bcryptjs.node.js && echo "✅ Bcryptjs.node.js exists"
+          test -f dist/nodes/Bcryptjs/bcryptjs.svg && echo "✅ bcryptjs.svg exists"
+          test -f dist/package.json && echo "✅ dist/package.json exists"
+
+      - name: Publish to NPM
+        run: |
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            CHANGELOG=$(sed -n "/## \[${{ env.NEW_VERSION }}\]/,/## \[/p" CHANGELOG.md | head -n -1)
+          else
+            CHANGELOG="🎉 Version ${{ env.NEW_VERSION }} Release
+
+            ### Key Features
+            - ✅ Complete bcryptjs async functions support
+            - ✅ 6 operations covering all bcryptjs functionality
+            - ✅ Password hashing, comparison, salt generation and validation
+            - ✅ Full TypeScript support with type definitions
+            - ✅ English interface for international users
+
+            ### Operations
+            - **Compare Password**: Asynchronously compare password with hash
+            - **Generate Salt**: Asynchronously generate salt value
+            - **Get Rounds**: Get the number of rounds used in the hash
+            - **Get Salt**: Extract salt portion from hash
+            - **Hash Password**: Asynchronously hash password
+            - **Test Truncation**: Test if password will be truncated
+
+            ### Installation
+            \`\`\`bash
+            npm install @luka-cat-mimi/n8n-nodes-bcryptjs
+            \`\`\`
+
+            For detailed usage instructions, see [README.md](https://github.com/luka-mimi/n8n-nodes-bcryptjs#readme)"
+          fi
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.NEW_VERSION }}
+          name: Version ${{ env.NEW_VERSION }}
+          body: ${{ steps.changelog.outputs.CHANGELOG }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publication success notification
+        run: |
+          echo "🎉 Publication successful!"
+          echo "📦 NPM Package: https://www.npmjs.com/package/@luka-cat-mimi/n8n-nodes-bcryptjs"
+          echo "🚀 GitHub Release: https://github.com/luka-mimi/n8n-nodes-bcryptjs/releases/tag/${{ env.NEW_VERSION }}"
+          echo "📋 Install Command: npm install @luka-cat-mimi/n8n-nodes-bcryptjs"

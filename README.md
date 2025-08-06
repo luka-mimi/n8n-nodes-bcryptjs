@@ -1,48 +1,93 @@
-![Banner image](https://user-images.githubusercontent.com/10284570/173569848-c624317f-42b1-45a6-ab09-f0ea3c247648.png)
+# @luka-cat-mimi/n8n-nodes-bcryptjs
 
-# n8n-nodes-starter
+This is an n8n community node that allows you to use bcryptjs for password hashing and verification operations in your n8n workflows.
 
-This repo contains example nodes to help you get started building your own custom integrations for [n8n](https://n8n.io). It includes the node linter and other dependencies.
+bcryptjs is an optimized bcrypt implementation in pure JavaScript with zero dependencies and TypeScript support.
 
-To make your custom node available to the community, you must create it as an npm package, and [submit it to the npm registry](https://docs.npmjs.com/packages-and-modules/contributing-packages-to-the-registry).
+[n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/reference/license/) workflow automation platform.
 
-If you would like your node to be available on n8n cloud you can also [submit your node for verification](https://docs.n8n.io/integrations/creating-nodes/deploy/submit-community-nodes/).
+## Installation
 
-## Prerequisites
+Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes/installation/) in the n8n community nodes documentation.
 
-You need the following installed on your development machine:
+## Operations
 
-* [git](https://git-scm.com/downloads)
-* Node.js and npm. Minimum version Node 20. You can find instructions on how to install both using nvm (Node Version Manager) for Linux, Mac, and WSL [here](https://github.com/nvm-sh/nvm). For Windows users, refer to Microsoft's guide to [Install NodeJS on Windows](https://docs.microsoft.com/en-us/windows/dev-environment/javascript/nodejs-on-windows).
-* Install n8n with:
-  ```
-  npm install n8n -g
-  ```
-* Recommended: follow n8n's guide to [set up your development environment](https://docs.n8n.io/integrations/creating-nodes/build/node-development-environment/).
+This node provides all bcryptjs async function capabilities:
 
-## Using this starter
+### Main Operations
 
-These are the basic steps for working with the starter. For detailed guidance on creating and publishing nodes, refer to the [documentation](https://docs.n8n.io/integrations/creating-nodes/).
+- **Generate Salt** (`genSalt`) - Asynchronously generate salt value
+- **Hash Password** (`hash`) - Asynchronously hash password
+- **Compare Password** (`compare`) - Asynchronously compare password with hash
+- **Get Rounds** (`getRounds`) - Get the number of rounds used in the hash
+- **Get Salt** (`getSalt`) - Extract salt portion from hash
+- **Test Truncation** (`truncates`) - Test if password will be truncated (over 72 bytes)
 
-1. [Generate a new repository](https://github.com/n8n-io/n8n-nodes-starter/generate) from this template repository.
-2. Clone your new repo:
-   ```
-   git clone https://github.com/<your organization>/<your-repo-name>.git
-   ```
-3. Run `npm i` to install dependencies.
-4. Open the project in your editor.
-5. Browse the examples in `/nodes` and `/credentials`. Modify the examples, or replace them with your own nodes.
-6. Update the `package.json` to match your details.
-7. Run `npm run lint` to check for errors or `npm run lintfix` to automatically fix errors when possible.
-8. Test your node locally. Refer to [Run your node locally](https://docs.n8n.io/integrations/creating-nodes/test/run-node-locally/) for guidance.
-9. Replace this README with documentation for your node. Use the [README_TEMPLATE](README_TEMPLATE.md) to get started.
-10. Update the LICENSE file to use your details.
-11. [Publish](https://docs.npmjs.com/packages-and-modules/contributing-packages-to-the-registry) your package to npm.
+### Parameter Descriptions
 
-## More information
+#### Generate Salt (genSalt)
+- **Rounds**: The cost of processing the data, default value is 10
+- **Minor Version**: The minor version of bcrypt, 'a' or 'b', default is 'b'
 
-Refer to our [documentation on creating nodes](https://docs.n8n.io/integrations/creating-nodes/) for detailed information on building your own nodes.
+#### Hash Password (hash)
+- **Password**: The password to hash
+- **Salt or Rounds**: Salt value to use for hashing, or number specifying rounds
 
-## License
+#### Compare Password (compare)
+- **Password**: The original password to compare
+- **Hash**: The hash value to compare against the password
 
-[MIT](https://github.com/n8n-io/n8n-nodes-starter/blob/master/LICENSE.md)
+#### Get Rounds (getRounds)
+- **Hash**: The hash value to extract rounds from
+
+#### Get Salt (getSalt)
+- **Hash**: The hash value to extract salt from
+
+#### Test Truncation (truncates)
+- **Password**: The password to check
+
+### Options
+
+- **Output Field Name**: Field name where the result will be saved, default is 'result'
+
+## Usage Examples
+
+### Example 1: Hash Password
+1. Set operation to "Hash Password"
+2. Enter the password to hash
+3. Set rounds (e.g., 10)
+4. The node will return the hashed password
+
+### Example 2: Verify Password
+1. Set operation to "Compare Password"
+2. Enter the original password and hash value
+3. The node will return true or false indicating if they match
+
+### Example 3: Custom Output Field
+1. In Options, set "Output Field Name" to your desired field name (e.g., "hashedPassword")
+2. The result will be saved to that field instead of the default "result" field
+
+
+
+## Security Considerations
+
+- bcrypt only uses the first 72 bytes of a password, any extra bytes are ignored
+- Recommend using async version to avoid blocking the event loop
+- Higher rounds mean better security but longer processing time
+- Default rounds of 10 is secure for most cases
+
+## Resources
+
+* [n8n community nodes documentation](https://docs.n8n.io/integrations/#community-nodes)
+* [bcryptjs documentation](https://github.com/dcodeIO/bcrypt.js)
+* [bcrypt algorithm explanation](https://en.wikipedia.org/wiki/Bcrypt)
+
+If this project helps you, please give it a ⭐️!
+
+## Version History
+
+### 0.1.0
+- Initial release
+- Implemented all bcryptjs async functions
+- Support for getting values from input data fields
+- Complete English user interface
